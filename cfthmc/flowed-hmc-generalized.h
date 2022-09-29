@@ -31,7 +31,7 @@ namespace qlat{
 
     namespace GlobalScopeHash{
       std::unordered_map<std::string, FlowType> get_flow_type;
-      constexpr int n_type = 44; // number of listed flow types
+      constexpr int n_type = 46; // 44 // number of listed flow types
       inline void setup_hash_map(){
         /* ---
            IMPORTANT NOTES:
@@ -46,6 +46,8 @@ namespace qlat{
         FlowTypeChairRho1 chair_rho1;
         FlowTypeChairRho2 chair_rho2;
         FlowTypeChairRho3 chair_rho3;
+        FlowTypeQPlus1 q_plus1;
+        FlowTypeQMinus1 q_minus1;
         FlowTypeQPlus2 q_plus;
         FlowTypeQMinus2 q_minus;
         // FlowTypeQPlus q_plus;
@@ -101,6 +103,8 @@ namespace qlat{
         set(static_cast<FlowType>(chair_rho1));
         set(static_cast<FlowType>(chair_rho2));
         set(static_cast<FlowType>(chair_rho3));
+        set(static_cast<FlowType>(q_plus1));
+        set(static_cast<FlowType>(q_minus1));
         set(static_cast<FlowType>(q_plus));
         set(static_cast<FlowType>(q_minus));
         set(static_cast<FlowType>(plaq_twice));
@@ -310,6 +314,22 @@ namespace qlat{
                  const int nstep,
                  const std::vector<std::vector<double>>& gamma_list );
 
+      FlowInfo2( const double tmax,
+                 const int nstep,
+                 const std::vector<std::vector<double>>& gamma_list,
+      		 const int mu);
+
+      FlowInfo2( const double tmax,
+                 const int nstep,
+                 const std::vector<std::vector<double>>& gamma_list,
+		 const bool is_cp_odd ); // gamma list incluing q_flow
+
+      FlowInfo2( const double tmax,
+                 const int nstep,
+                 const std::vector<std::vector<double>>& gamma_list,
+		 const int mu,
+		 const bool is_cp_odd ); // gamma list incluing q_flow
+
       const FlowStepInfo2& operator[](const std::size_t i) const& { return v[i]; }
       const int& get_max_flow_size() const& { return max_flow_size; }
       int size() const& { return static_cast<int>(v.size()); }
@@ -335,8 +355,19 @@ namespace qlat{
       void set_from_hash(const std::unordered_map<std::string, FlowType>& hash,
                          const std::string& description,
                          const double step_size) &; // essentially a push_back function
+      void set_from_hash(const std::unordered_map<std::string, FlowType>& hash,
+                         const std::string& description,
+                         const double step_size,
+			 const int mu) &; // essentially a push_back function
+      /* void set_from_hash_q(const std::unordered_map<std::string, FlowType>& hash, */
+      /*                      const double step_size) &; // essentially a push_back function */
       void set_from_hash_q(const std::unordered_map<std::string, FlowType>& hash,
-                           const double step_size) &; // essentially a push_back function
+                           const double step_size,
+			   const bool is_cp_odd = true ) &; // essentially a push_back function
+      void set_from_hash_q(const std::unordered_map<std::string, FlowType>& hash,
+                           const double step_size,
+			   const bool is_cp_odd,
+			   const int mu ) &; // essentially a push_back function
     };
 
     // -------------------------------------------------------------------------
@@ -2646,6 +2677,358 @@ namespace qlat{
     }
 
 
+    FlowInfo2::FlowInfo2
+    (
+     const double tmax,
+     const int nstep,
+     const std::vector<std::vector<double>>& gamma_list,
+     const int mu
+     )
+    {
+      qassert( GlobalScopeHash::get_flow_type.size()==GlobalScopeHash::n_type );
+      const double epsilon_base = tmax/nstep;
+      qassert( static_cast<int>(gamma_list.size())==nstep );
+      for(int i=0; i<nstep; ++i ) qassert( gamma_list[i].size()==11 );
+
+      for(int i=0; i<nstep; ++i){
+        const double epsilon_plaq = -epsilon_base * gamma_list[i][0];
+        const double epsilon_rect = -epsilon_base * gamma_list[i][1];
+        const double epsilon_chair = -epsilon_base * gamma_list[i][2];
+        const double epsilon_twist_rect = -epsilon_base * gamma_list[i][3]; // bound for double: 1.0 * 1/16
+        const double epsilon_twist_chair = -epsilon_base * gamma_list[i][4]; // bound for double: 1.0 * 1/64
+        const double epsilon_rect_distinct = -epsilon_base * gamma_list[i][5]; // bound 1.0/(8.0*6.0) ~ 0.021
+        const double epsilon_chair_distinct = -epsilon_base * gamma_list[i][6]; // bound 0.5/(8.0*12.0) ~ 0.00521
+        const double epsilon_twist_rect_distinct = -epsilon_base * gamma_list[i][7]; // bound 1.0/(8.0*6.0) ~ 0.021
+        const double epsilon_twist_chair_distinct = -epsilon_base * gamma_list[i][8]; // bound 0.5/(8.0*12.0) ~ 0.00525
+        const double epsilon_plaq_twice = -epsilon_base * gamma_list[i][9]; // bound for double: 0.5 * 1/16 (0.5 comes from the multiclicative factor)
+        const double epsilon_plaq_times_reversed = -epsilon_base * gamma_list[i][10]; // bound 1.0/(8.0*6.0) ~ 0.021
+
+        if(std::abs(epsilon_plaq) > 1.0e-15){
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"plaq",epsilon_plaq, mu);
+        }
+        if (std::abs(epsilon_rect) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"srect",epsilon_rect, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"lrect",epsilon_rect, mu);
+        }
+        if (std::abs(epsilon_chair) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_rho1",epsilon_chair, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_rho2",epsilon_chair, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_rho3",epsilon_chair, mu);
+        }
+        if (std::abs(epsilon_plaq_twice) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"plaq_twice",epsilon_plaq_twice, mu);
+        }
+        if (std::abs(epsilon_twist_rect) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_srect_rho1",
+                              epsilon_twist_rect, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_srect_rho2",
+                              epsilon_twist_rect, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_srect_rho3",
+                              epsilon_twist_rect, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_lrect",
+                              epsilon_twist_rect, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_mrect",
+                              epsilon_twist_rect, mu);
+        }
+        if (std::abs(epsilon_twist_chair) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_chair_outer_rho1",
+                              epsilon_twist_chair, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_chair_outer_rho2",
+                              epsilon_twist_chair, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_chair_outer_rho3",
+                              epsilon_twist_chair, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_chair_inner",
+                              epsilon_twist_chair, mu);
+        }
+        if (std::abs(epsilon_plaq_times_reversed) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"plaq_times_reversed",epsilon_plaq_times_reversed, mu);
+        }
+        if (std::abs(epsilon_rect_distinct) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"srect_distinct_rho1",epsilon_rect_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"srect_distinct_rho2",epsilon_rect_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"srect_distinct_rho3",epsilon_rect_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"lrect_distinct",epsilon_rect_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"mrect_distinct",epsilon_rect_distinct, mu);
+        }
+        if (std::abs(epsilon_chair_distinct) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typea_rho1",epsilon_chair_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typea_rho2",epsilon_chair_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typea_rho3",epsilon_chair_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typeb_rho1",epsilon_chair_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typeb_rho2",epsilon_chair_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typeb_rho3",epsilon_chair_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_inner",epsilon_chair_distinct, mu);
+        }
+        if (std::abs(epsilon_twist_rect_distinct) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_srect_distinct_rho1",epsilon_twist_rect_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_srect_distinct_rho2",epsilon_twist_rect_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_srect_distinct_rho3",epsilon_twist_rect_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_lrect_distinct",epsilon_twist_rect_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_mrect_distinct",epsilon_twist_rect_distinct, mu);
+        }
+        if (std::abs(epsilon_twist_chair_distinct) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typea_rho1",epsilon_twist_chair_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typea_rho2",epsilon_twist_chair_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typea_rho3",epsilon_twist_chair_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typeb_rho1",epsilon_twist_chair_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typeb_rho2",epsilon_twist_chair_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typeb_rho3",epsilon_twist_chair_distinct, mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_inner",epsilon_twist_chair_distinct, mu);
+        }
+        if(this->size()!=0) this->turn_on_measurement_at_last_step();
+
+        this->set_max_flow_size(GlobalScopeHash::get_flow_type);
+      }
+    }
+
+
+    FlowInfo2::FlowInfo2
+    (
+     const double tmax,
+     const int nstep,
+     const std::vector<std::vector<double>>& gamma_list,
+     const int mu,
+     const bool is_cp_odd
+     )
+    {
+      qassert( GlobalScopeHash::get_flow_type.size()==GlobalScopeHash::n_type );
+      const double epsilon_base = tmax/nstep;
+      qassert( static_cast<int>(gamma_list.size())==nstep );
+      for(int i=0; i<nstep; ++i ) qassert( gamma_list[i].size()==12 );
+
+      for(int i=0; i<nstep; ++i){
+        const double epsilon_plaq = -epsilon_base * gamma_list[i][0];
+        const double epsilon_rect = -epsilon_base * gamma_list[i][1];
+        const double epsilon_chair = -epsilon_base * gamma_list[i][2];
+        const double epsilon_twist_rect = -epsilon_base * gamma_list[i][3]; // bound for double: 1.0 * 1/16
+        const double epsilon_twist_chair = -epsilon_base * gamma_list[i][4]; // bound for double: 1.0 * 1/64
+        const double epsilon_rect_distinct = -epsilon_base * gamma_list[i][5]; // bound 1.0/(8.0*6.0) ~ 0.021
+        const double epsilon_chair_distinct = -epsilon_base * gamma_list[i][6]; // bound 0.5/(8.0*12.0) ~ 0.00521
+        const double epsilon_twist_rect_distinct = -epsilon_base * gamma_list[i][7]; // bound 1.0/(8.0*6.0) ~ 0.021
+        const double epsilon_twist_chair_distinct = -epsilon_base * gamma_list[i][8]; // bound 0.5/(8.0*12.0) ~ 0.00525
+        const double epsilon_plaq_twice = -epsilon_base * gamma_list[i][9]; // bound for double: 0.5 * 1/16 (0.5 comes from the multiclicative factor)
+        const double epsilon_plaq_times_reversed = -epsilon_base * gamma_list[i][10]; // bound 1.0/(8.0*6.0) ~ 0.021
+	const double epsilon_q = -epsilon_base * gamma_list[i][11]; // bound 1.0/(8.0*6.0) ~ 0.021
+
+        if(std::abs(epsilon_plaq) > 1.0e-15){
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"plaq",epsilon_plaq,mu);
+        }
+        if (std::abs(epsilon_rect) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"srect",epsilon_rect,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"lrect",epsilon_rect,mu);
+        }
+        if (std::abs(epsilon_chair) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_rho1",epsilon_chair,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_rho2",epsilon_chair,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_rho3",epsilon_chair,mu);
+        }
+        if (std::abs(epsilon_plaq_twice) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"plaq_twice",epsilon_plaq_twice,mu);
+        }
+        if (std::abs(epsilon_twist_rect) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_srect_rho1",
+                              epsilon_twist_rect,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_srect_rho2",
+                              epsilon_twist_rect,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_srect_rho3",
+                              epsilon_twist_rect,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_lrect",
+                              epsilon_twist_rect,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_mrect",
+                              epsilon_twist_rect,mu);
+        }
+        if (std::abs(epsilon_twist_chair) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_chair_outer_rho1",
+                              epsilon_twist_chair,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_chair_outer_rho2",
+                              epsilon_twist_chair,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_chair_outer_rho3",
+                              epsilon_twist_chair,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_chair_inner",
+                              epsilon_twist_chair,mu);
+        }
+        if (std::abs(epsilon_plaq_times_reversed) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"plaq_times_reversed",epsilon_plaq_times_reversed,mu);
+        }
+        if (std::abs(epsilon_rect_distinct) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"srect_distinct_rho1",epsilon_rect_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"srect_distinct_rho2",epsilon_rect_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"srect_distinct_rho3",epsilon_rect_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"lrect_distinct",epsilon_rect_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"mrect_distinct",epsilon_rect_distinct,mu);
+        }
+        if (std::abs(epsilon_chair_distinct) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typea_rho1",epsilon_chair_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typea_rho2",epsilon_chair_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typea_rho3",epsilon_chair_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typeb_rho1",epsilon_chair_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typeb_rho2",epsilon_chair_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typeb_rho3",epsilon_chair_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_inner",epsilon_chair_distinct,mu);
+        }
+        if (std::abs(epsilon_twist_rect_distinct) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_srect_distinct_rho1",epsilon_twist_rect_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_srect_distinct_rho2",epsilon_twist_rect_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_srect_distinct_rho3",epsilon_twist_rect_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_lrect_distinct",epsilon_twist_rect_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_mrect_distinct",epsilon_twist_rect_distinct,mu);
+        }
+        if (std::abs(epsilon_twist_chair_distinct) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typea_rho1",epsilon_twist_chair_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typea_rho2",epsilon_twist_chair_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typea_rho3",epsilon_twist_chair_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typeb_rho1",epsilon_twist_chair_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typeb_rho2",epsilon_twist_chair_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typeb_rho3",epsilon_twist_chair_distinct,mu);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_inner",epsilon_twist_chair_distinct,mu);
+        }
+	if (std::abs(epsilon_q) > 1.0e-15) {
+	  this->set_from_hash_q(GlobalScopeHash::get_flow_type,epsilon_q,is_cp_odd,mu);
+	}
+     
+        if(this->size()!=0) this->turn_on_measurement_at_last_step();
+
+        this->set_max_flow_size(GlobalScopeHash::get_flow_type);
+      }
+    }
+
+    FlowInfo2::FlowInfo2
+    (
+     const double tmax,
+     const int nstep,
+     const std::vector<std::vector<double>>& gamma_list,
+     const bool is_cp_odd
+     )
+    {
+      qassert( GlobalScopeHash::get_flow_type.size()==GlobalScopeHash::n_type );
+      const double epsilon_base = tmax/nstep;
+      qassert( static_cast<int>(gamma_list.size())==nstep );
+      for(int i=0; i<nstep; ++i ) qassert( gamma_list[i].size()==12 );
+
+      for(int i=0; i<nstep; ++i){
+        const double epsilon_plaq = -epsilon_base * gamma_list[i][0];
+        const double epsilon_rect = -epsilon_base * gamma_list[i][1];
+        const double epsilon_chair = -epsilon_base * gamma_list[i][2];
+        const double epsilon_twist_rect = -epsilon_base * gamma_list[i][3]; // bound for double: 1.0 * 1/16
+        const double epsilon_twist_chair = -epsilon_base * gamma_list[i][4]; // bound for double: 1.0 * 1/64
+        const double epsilon_rect_distinct = -epsilon_base * gamma_list[i][5]; // bound 1.0/(8.0*6.0) ~ 0.021
+        const double epsilon_chair_distinct = -epsilon_base * gamma_list[i][6]; // bound 0.5/(8.0*12.0) ~ 0.00521
+        const double epsilon_twist_rect_distinct = -epsilon_base * gamma_list[i][7]; // bound 1.0/(8.0*6.0) ~ 0.021
+        const double epsilon_twist_chair_distinct = -epsilon_base * gamma_list[i][8]; // bound 0.5/(8.0*12.0) ~ 0.00525
+        const double epsilon_plaq_twice = -epsilon_base * gamma_list[i][9]; // bound for double: 0.5 * 1/16 (0.5 comes from the multiclicative factor)
+        const double epsilon_plaq_times_reversed = -epsilon_base * gamma_list[i][10]; // bound 1.0/(8.0*6.0) ~ 0.021
+	const double epsilon_q = -epsilon_base * gamma_list[i][11]; // bound 1.0/(8.0*6.0) ~ 0.021
+
+        if(std::abs(epsilon_plaq) > 1.0e-15){
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"plaq",epsilon_plaq);
+        }
+        if (std::abs(epsilon_rect) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"srect",epsilon_rect);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"lrect",epsilon_rect);
+        }
+        if (std::abs(epsilon_chair) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_rho1",epsilon_chair);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_rho2",epsilon_chair);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_rho3",epsilon_chair);
+        }
+        if (std::abs(epsilon_plaq_twice) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"plaq_twice",epsilon_plaq_twice);
+        }
+        if (std::abs(epsilon_twist_rect) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_srect_rho1",
+                              epsilon_twist_rect);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_srect_rho2",
+                              epsilon_twist_rect);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_srect_rho3",
+                              epsilon_twist_rect);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_lrect",
+                              epsilon_twist_rect);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_mrect",
+                              epsilon_twist_rect);
+        }
+        if (std::abs(epsilon_twist_chair) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_chair_outer_rho1",
+                              epsilon_twist_chair);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_chair_outer_rho2",
+                              epsilon_twist_chair);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_chair_outer_rho3",
+                              epsilon_twist_chair);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,
+                              "twist_chair_inner",
+                              epsilon_twist_chair);
+        }
+        if (std::abs(epsilon_plaq_times_reversed) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"plaq_times_reversed",epsilon_plaq_times_reversed);
+        }
+        if (std::abs(epsilon_rect_distinct) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"srect_distinct_rho1",epsilon_rect_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"srect_distinct_rho2",epsilon_rect_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"srect_distinct_rho3",epsilon_rect_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"lrect_distinct",epsilon_rect_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"mrect_distinct",epsilon_rect_distinct);
+        }
+        if (std::abs(epsilon_chair_distinct) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typea_rho1",epsilon_chair_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typea_rho2",epsilon_chair_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typea_rho3",epsilon_chair_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typeb_rho1",epsilon_chair_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typeb_rho2",epsilon_chair_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_typeb_rho3",epsilon_chair_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"chair_distinct_inner",epsilon_chair_distinct);
+        }
+        if (std::abs(epsilon_twist_rect_distinct) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_srect_distinct_rho1",epsilon_twist_rect_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_srect_distinct_rho2",epsilon_twist_rect_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_srect_distinct_rho3",epsilon_twist_rect_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_lrect_distinct",epsilon_twist_rect_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_mrect_distinct",epsilon_twist_rect_distinct);
+        }
+        if (std::abs(epsilon_twist_chair_distinct) > 1.0e-15) {
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typea_rho1",epsilon_twist_chair_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typea_rho2",epsilon_twist_chair_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typea_rho3",epsilon_twist_chair_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typeb_rho1",epsilon_twist_chair_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typeb_rho2",epsilon_twist_chair_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_typeb_rho3",epsilon_twist_chair_distinct);
+          this->set_from_hash(GlobalScopeHash::get_flow_type,"twist_chair_distinct_inner",epsilon_twist_chair_distinct);
+        }
+	if (std::abs(epsilon_q) > 1.0e-15) {
+	  this->set_from_hash_q(GlobalScopeHash::get_flow_type,epsilon_q,is_cp_odd);
+	}
+     
+        if(this->size()!=0) this->turn_on_measurement_at_last_step();
+
+        this->set_max_flow_size(GlobalScopeHash::get_flow_type);
+      }
+    }
+
+
 
 
     void FlowInfo2::set_max_flow_size
@@ -2679,14 +3062,35 @@ namespace qlat{
       }
     }
 
+    void FlowInfo2::set_from_hash
+    (
+     const std::unordered_map<std::string, FlowType>& hash,
+     const std::string& description,
+     const double step_size,
+     const int mu
+     ) &
+    {
+      assert(description!="q_plus" && description !="q_minus");
+      const FlowType& flow_type = hash.at(description);
+      assert(( flow_type.multiplicative_const*step_size < 1.0 / flow_type.bound_inverse ));
+      // int rotation_sign = 1;
+      for(int mask=0; mask<flow_type.n_masks; ++mask){
+	this->v.push_back(FlowStepInfo2(mask, mu,
+					//rotation_sign*flow_type.multiplicative_const*step_size,
+					flow_type.multiplicative_const*step_size,
+					flow_type));
+      }
+    }
+
     void FlowInfo2::set_from_hash_q
     (
      const std::unordered_map<std::string, FlowType>& hash,
-     const double step_size
+     const double step_size,
+     const bool is_cp_odd /*=true*/
      ) &
     {
-      const FlowType& q_plus = hash.at("q_plus");
-      const FlowType& q_minus = hash.at("q_minus");
+      const FlowType& q_plus = is_cp_odd? hash.at("q_plus") : hash.at("q_plus1");
+      const FlowType& q_minus = is_cp_odd? hash.at("q_minus") : hash.at("q_minus1");
 
       for(int mu=3; mu>=0; --mu){
         const int rotation_sign = 1-(mu%2)*2;
@@ -2717,6 +3121,46 @@ namespace qlat{
         else assert(false);
       }
     }
+
+    void FlowInfo2::set_from_hash_q
+    (
+     const std::unordered_map<std::string, FlowType>& hash,
+     const double step_size,
+     const bool is_cp_odd /*=true*/,
+     const int mu
+     ) &
+    {
+      const FlowType& q_plus = is_cp_odd? hash.at("q_plus") : hash.at("q_plus1");
+      const FlowType& q_minus = is_cp_odd? hash.at("q_minus") : hash.at("q_minus1");
+
+      const int rotation_sign = 1-(mu%2)*2;
+      if(rotation_sign==1){
+	for(int mask=0; mask<q_plus.n_masks; ++mask){
+	  this->v.push_back(FlowStepInfo2(mask, mu,
+					  q_plus.multiplicative_const*step_size,
+					  q_plus));
+	}
+	for(int mask=0; mask<q_minus.n_masks; ++mask){
+	  this->v.push_back(FlowStepInfo2(mask, mu,
+					  q_minus.multiplicative_const*step_size,
+					  q_minus));
+	}
+      }
+      else if(rotation_sign==-1){
+	for(int mask=0; mask<q_plus.n_masks; ++mask){
+	  this->v.push_back(FlowStepInfo2(mask, mu,
+					  -q_plus.multiplicative_const*step_size,
+					  q_plus));
+	}
+	for(int mask=0; mask<q_minus.n_masks; ++mask){
+	  this->v.push_back(FlowStepInfo2(mask, mu,
+					  -q_minus.multiplicative_const*step_size,
+					  q_minus));
+	}
+      }
+      else assert(false);
+    }
+
   }  // namespace Generalized
 }  // namespace qlat
 

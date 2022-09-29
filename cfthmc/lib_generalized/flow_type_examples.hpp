@@ -158,6 +158,48 @@ namespace qlat{
     //                                                  (mu+3)%DIMN); }
     // };
 
+    class FlowTypeQPlus1 : public FlowType{
+    public:
+      FlowTypeQPlus1
+      (
+       const int mu_=0,
+       const std::array<int,DIMN> dimensions_ = std::array<int,DIMN>{{2,2,2,2}},
+       const int n_loops_ = 12, // 96
+       const int length_of_loop_ = 8,
+       const int n_masks_ = 2,
+       const std::string description_ = "q_plus1",
+       const int flow_size_ = 2,
+       const int multiplicative_const_ = +1
+       );
+
+      static int epsilon(const int mu, const int nu, const int rho, const int sigma );
+      int sign(const int mu) const& { return epsilon(mu%DIMN,
+                                                     (mu+1)%DIMN,
+                                                     (mu+2)%DIMN,
+                                                     (mu+3)%DIMN); }
+    };
+
+
+    class FlowTypeQMinus1 : public FlowType{
+    public:
+      FlowTypeQMinus1
+      (
+       const int mu_=0,
+       const std::array<int,DIMN> dimensions_ = std::array<int,DIMN>{{2,2,2,2}},
+       const int n_loops_ = 12, // 96
+       const int length_of_loop_ = 8,
+       const int n_masks_ = 2,
+       const std::string description_ = "q_minus1",
+       const int flow_size_ = 2,
+       const int multiplicative_const_ = -1
+       );
+
+      const std::function<int(const int, const int, const int, const int)>& epsilon = FlowTypeQPlus1::epsilon;
+      int sign(const int mu) const& { return epsilon(mu%DIMN,
+                                                     (mu+1)%DIMN,
+                                                     (mu+2)%DIMN,
+                                                     (mu+3)%DIMN); }
+    };
 
     class FlowTypeQPlus2 : public FlowType{
     public:
@@ -848,7 +890,6 @@ namespace qlat{
       this->set_mask( even_odd );
       this->initialize();
     }
-
 
     FlowTypeSrect::FlowTypeSrect
     (
@@ -1961,6 +2002,141 @@ namespace qlat{
     // }
 
 
+    FlowTypeQPlus1::FlowTypeQPlus1
+    (
+     const int mu_/*=0*/,
+     const std::array<int,DIMN> dimensions_/*=std::array<int,DIMN>{{2,2,2,2}}*/,
+     const int n_loops_/*=16*/,
+     const int length_of_loop_/*=8*/,
+     const int n_masks_/*=2*/,
+     const std::string description_/*="q_plus"*/,
+     const int flow_size_/*=2*/,
+     const int multiplicative_const_/*=+1*/
+     )
+      : UnitInfo(dimensions_)
+      , FlowType(dimensions_,n_loops_,length_of_loop_,n_masks_,description_,flow_size_,
+                 multiplicative_const_)
+    {
+      int counter = 0;
+
+      for(int nu=0; nu<DIMN; ++nu){
+        for(int rho=0; rho<DIMN; ++rho){
+          for(int sigma=0; sigma<DIMN; ++sigma){
+
+            if(epsilon(mu_,nu,rho,sigma)==1){
+              // type 1
+              this->set_shape(counter,
+                              std::vector<int>{mu_,nu,-mu_-1,-nu-1,rho,sigma,-rho-1,-sigma-1});
+              ++counter;
+              // type 2
+              this->set_shape(counter,
+                              std::vector<int>{mu_,nu,-mu_-1,rho,sigma,-rho-1,-sigma-1,-nu-1});
+              ++counter;
+              // type 3
+              this->set_shape(counter,
+                              std::vector<int>{mu_,nu,rho,sigma,-rho-1,-sigma-1,-mu_-1,-nu-1});
+              ++counter;
+              // type 4
+              this->set_shape(counter,
+                              std::vector<int>{mu_,rho,sigma,-rho-1,-sigma-1,nu,-mu_-1,-nu-1});
+              ++counter;
+            }
+
+          } // end for sigma
+        } // end for rho
+      } // end for nu
+      assert(counter==n_loops_);
+
+      const std::function<int(const int, const int, const int, const int)> even_odd
+        = [](const int x1, const int x2, const int x3, const int x4) {
+        return (x1 + x2 + x3 + x4 + 1024)%2;
+      };
+      this->set_mask( even_odd );
+      this->initialize();
+    }
+
+    int FlowTypeQPlus1::epsilon(const int mu, const int nu, const int rho, const int sigma ){
+      int sgn = 0;
+      std::array<int,DIMN> array{{mu,nu,rho,sigma}};
+      assert(!(mu<0||nu<0||rho<0||sigma<0));
+      for(auto itr=array.begin(); itr!=array.end(); ++itr){
+        if(*itr<0){
+          *itr = -(*itr)-1;
+          ++sgn;
+        }
+      }
+      if( (array[0]-array[1])*(array[0]-array[2])*(array[0]-array[3])
+          *(array[1]-array[2])*(array[1]-array[3])
+          *(array[2]-array[3])
+          ==0 ){
+        return 0;
+      }
+      for(auto itr=array.begin(); itr!=array.end(); ){
+        const auto smaller = std::find_if(itr+1, array.end(),
+                                          [&itr](const int alpha){ return (*itr)>alpha; });
+        if(smaller!=array.end()){
+          ++sgn;
+          const int tmp = *itr;
+          *itr = *smaller;
+          *smaller = tmp;
+        }
+        else ++itr;
+      }
+      return 1 - 2*(sgn%2);
+    }
+
+
+    FlowTypeQMinus1::FlowTypeQMinus1
+    (
+     const int mu_/*=0*/,
+     const std::array<int,DIMN> dimensions_/*=std::array<int,DIMN>{{2,2,2,2}}*/,
+     const int n_loops_/*=16*/,
+     const int length_of_loop_/*=8*/,
+     const int n_masks_/*=2*/,
+     const std::string description_/*="q_minus1"*/,
+     const int flow_size_/*=2*/,
+     const int multiplicative_const_/*=-1*/
+     )
+      : UnitInfo(dimensions_)
+      , FlowType(dimensions_,n_loops_,length_of_loop_,n_masks_,description_,flow_size_,
+                 multiplicative_const_)
+    {
+      int counter = 0;
+      for(int nu=0; nu<DIMN; ++nu){
+        for(int rho=0; rho<DIMN; ++rho){
+          for(int sigma=0; sigma<DIMN; ++sigma){
+            if(epsilon(mu_,nu,rho,sigma)==-1){
+              // type 1
+              this->set_shape(counter,
+                              std::vector<int>{mu_,nu,-mu_-1,-nu-1,rho,sigma,-rho-1,-sigma-1});
+              ++counter;
+              // type 2
+              this->set_shape(counter,
+                              std::vector<int>{mu_,nu,-mu_-1,rho,sigma,-rho-1,-sigma-1,-nu-1});
+              ++counter;
+              // type 3
+              this->set_shape(counter,
+                              std::vector<int>{mu_,nu,rho,sigma,-rho-1,-sigma-1,-mu_-1,-nu-1});
+              ++counter;
+              // type 4
+              this->set_shape(counter,
+                              std::vector<int>{mu_,rho,sigma,-rho-1,-sigma-1,nu,-mu_-1,-nu-1});
+              ++counter;
+            }
+          } // end for sigma
+        } // end for rho
+      } // end for nu
+      assert(counter==n_loops_);
+
+      const std::function<int(const int, const int, const int, const int)> even_odd
+        = [](const int x1, const int x2, const int x3, const int x4) {
+        return (x1 + x2 + x3 + x4 + 1024)%2;
+      };
+      this->set_mask( even_odd );
+      this->initialize();
+    }
+
+
     FlowTypeQPlus2::FlowTypeQPlus2
     (
      const int mu_/*=0*/,
@@ -2093,6 +2269,7 @@ namespace qlat{
       this->set_mask( even_odd );
       this->initialize();
     }
+
 
 
     FlowTypePlaqTwice::FlowTypePlaqTwice
